@@ -3,7 +3,8 @@
 
 local WIDTH  = 40
 local HEIGHT = 20
-local DELAY  = 0.1
+local SPEEDS = {0.5, 0.3, 0.2, 0.1, 0.07, 0.04, 0.02, 0.01}
+local sp = 4
 
 local function sleep(sec)
     local t = os.clock() + sec
@@ -111,7 +112,9 @@ end
 
 local function render(grid, gen)
     local buf = {}
-    buf[#buf+1] = string.format("  Game of Life  |  Gen: %d\n", gen)
+    buf[#buf+1] = string.format(
+        "  Game of Life  |  Gen: %d  |  Speed: %d/8  |  [A] faster  [Z] slower  [Q] quit\n",
+        gen, sp)
     buf[#buf+1] = "  +" .. string.rep("-", WIDTH) .. "+\n"
     for y = 1, HEIGHT do
         buf[#buf+1] = "  |"
@@ -121,9 +124,19 @@ local function render(grid, gen)
         buf[#buf+1] = "|\n"
     end
     buf[#buf+1] = "  +" .. string.rep("-", WIDTH) .. "+\n"
-    buf[#buf+1] = "  Ctrl+C to quit\n"
     io.write(table.concat(buf))
     io.flush()
+end
+
+local function readKey()
+    local ch
+    pcall(function()
+        os.execute("stty -echo -icanon min 0 time 0 2>/dev/null")
+        local f = io.open("/dev/stdin", "r")
+        if f then ch = f:read(1); f:close() end
+        os.execute("stty echo icanon 2>/dev/null")
+    end)
+    return ch
 end
 
 -- init
@@ -138,11 +151,25 @@ else
     randomSeed(grid, 0.15)
 end
 
+io.write("\027[2J")
 local gen = 0
-while true do
-    clear()
-    render(grid, gen)
-    grid = step(grid)
-    gen  = gen + 1
-    sleep(DELAY)
-end
+pcall(function()
+    while true do
+        clear()
+        render(grid, gen)
+        local k = readKey()
+        if k then
+            k = k:lower()
+            if k == "q" then
+                os.execute("stty echo icanon")
+                io.write("\nBye!\n"); os.exit(0)
+            elseif k == "a" and sp < #SPEEDS then sp = sp + 1
+            elseif k == "z" and sp > 1       then sp = sp - 1
+            end
+        end
+        grid = step(grid)
+        gen  = gen + 1
+        sleep(SPEEDS[sp])
+    end
+end)
+os.execute("stty echo icanon")
