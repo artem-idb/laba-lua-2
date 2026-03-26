@@ -1,6 +1,9 @@
+-- Game of Life | lua life.lua [file.txt]
+-- Файл: # живая, . мёртвая
+
 local WIDTH  = 40
 local HEIGHT = 20
-local DELAY  = 0.1  
+local DELAY  = 0.1
 
 local function sleep(sec)
     local t = os.clock() + sec
@@ -8,7 +11,7 @@ local function sleep(sec)
 end
 
 local function clear()
-    io.write("\027[2J\027[H") 
+    io.write("\027[2J\027[H")
     io.flush()
 end
 
@@ -19,14 +22,6 @@ local function newGrid()
         for x = 1, WIDTH do g[y][x] = false end
     end
     return g
-end
-
-local function copyGrid(src)
-    local dst = newGrid()
-    for y = 1, HEIGHT do
-        for x = 1, WIDTH do dst[y][x] = src[y][x] end
-    end
-    return dst
 end
 
 local function setCell(grid, x, y, v)
@@ -46,7 +41,7 @@ local function rpentomino(grid, ox, oy)
 end
 
 local function blinker(grid, ox, oy)
-    setCell(grid, ox,   oy, true)
+    setCell(grid, ox, oy, true)
     setCell(grid, ox+1, oy, true)
     setCell(grid, ox+2, oy, true)
 end
@@ -59,6 +54,30 @@ local function randomSeed(grid, density)
             grid[y][x] = math.random() < density
         end
     end
+end
+
+local function loadFile(filename)
+    local f = io.open(filename)
+    if not f then print("File not found: " .. filename); os.exit(1) end
+    local rows, maxw = {}, 0
+    for line in f:lines() do
+        local row = {}
+        for ch in line:gmatch(".") do row[#row+1] = (ch == "#") end
+        rows[#rows+1] = row
+        if #row > maxw then maxw = #row end
+    end
+    f:close()
+    if maxw  > WIDTH  then WIDTH  = maxw  end
+    if #rows > HEIGHT then HEIGHT = #rows end
+    local grid = newGrid()
+    local ox = math.floor((WIDTH  - maxw)  / 2)
+    local oy = math.floor((HEIGHT - #rows) / 2)
+    for ry, row in ipairs(rows) do
+        for rx, alive in ipairs(row) do
+            if alive then setCell(grid, rx+ox, ry+oy, true) end
+        end
+    end
+    return grid
 end
 
 local function countNeighbours(grid, x, y)
@@ -102,22 +121,24 @@ local function render(grid, gen)
         buf[#buf+1] = "|\n"
     end
     buf[#buf+1] = "  +" .. string.rep("-", WIDTH) .. "+\n"
-    buf[#buf+1] = "Ctrl+C to quit\n"
+    buf[#buf+1] = "  Ctrl+C to quit\n"
     io.write(table.concat(buf))
     io.flush()
 end
 
-local grid = newGrid()
-
-glider(grid,  2,  2)
-glider(grid, 10,  5)
-rpentomino(grid, 20, 8)
-blinker(grid, 30, 3)
-blinker(grid, 35, 15)
-randomSeed(grid, 0.15)
+-- init
+local grid
+if arg[1] then
+    grid = loadFile(arg[1])
+else
+    grid = newGrid()
+    glider(grid, 2, 2); glider(grid, 10, 5)
+    rpentomino(grid, 20, 8)
+    blinker(grid, 30, 3); blinker(grid, 35, 15)
+    randomSeed(grid, 0.15)
+end
 
 local gen = 0
-
 while true do
     clear()
     render(grid, gen)
