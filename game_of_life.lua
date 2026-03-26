@@ -1,175 +1,97 @@
 -- Game of Life | lua life.lua [file.txt]
+-- A=faster  Z=slower  Q=quit
 -- Файл: # живая, . мёртвая
 
-local WIDTH  = 40
-local HEIGHT = 20
+local W, H = 40, 20
 local SPEEDS = {0.5, 0.3, 0.2, 0.1, 0.07, 0.04, 0.02, 0.01}
 local sp = 4
 
-local function sleep(sec)
-    local t = os.clock() + sec
-    while os.clock() < t do end
-end
-
-local function clear()
-    io.write("\027[2J\027[H")
-    io.flush()
-end
-
-local function newGrid()
+local function newGrid() 
     local g = {}
-    for y = 1, HEIGHT do
-        g[y] = {}
-        for x = 1, WIDTH do g[y][x] = false end
-    end
+    for i = 1, W*H do g[i] = false end
     return g
 end
 
-local function setCell(grid, x, y, v)
-    if x >= 1 and x <= WIDTH and y >= 1 and y <= HEIGHT then
-        grid[y][x] = (v ~= false)
-    end
-end
+local function idx(x, y) return ((y-1) % H) * W + ((x-1) % W) + 1 end
 
-local function glider(grid, ox, oy)
-    local cells = {{1,0},{2,1},{0,2},{1,2},{2,2}}
-    for _, c in ipairs(cells) do setCell(grid, ox+c[1], oy+c[2], true) end
-end
-
-local function rpentomino(grid, ox, oy)
-    local cells = {{1,0},{2,0},{0,1},{1,1},{1,2}}
-    for _, c in ipairs(cells) do setCell(grid, ox+c[1], oy+c[2], true) end
-end
-
-local function blinker(grid, ox, oy)
-    setCell(grid, ox, oy, true)
-    setCell(grid, ox+1, oy, true)
-    setCell(grid, ox+2, oy, true)
-end
-
-local function randomSeed(grid, density)
-    density = density or 0.3
-    math.randomseed(os.time())
-    for y = 1, HEIGHT do
-        for x = 1, WIDTH do
-            grid[y][x] = math.random() < density
-        end
-    end
-end
-
-local function loadFile(filename)
-    local f = io.open(filename)
-    if not f then print("File not found: " .. filename); os.exit(1) end
-    local rows, maxw = {}, 0
-    for line in f:lines() do
-        local row = {}
-        for ch in line:gmatch(".") do row[#row+1] = (ch == "#") end
-        rows[#rows+1] = row
-        if #row > maxw then maxw = #row end
-    end
-    f:close()
-    if maxw  > WIDTH  then WIDTH  = maxw  end
-    if #rows > HEIGHT then HEIGHT = #rows end
-    local grid = newGrid()
-    local ox = math.floor((WIDTH  - maxw)  / 2)
-    local oy = math.floor((HEIGHT - #rows) / 2)
-    for ry, row in ipairs(rows) do
-        for rx, alive in ipairs(row) do
-            if alive then setCell(grid, rx+ox, ry+oy, true) end
-        end
-    end
-    return grid
-end
-
-local function countNeighbours(grid, x, y)
-    local n = 0
-    for dy = -1, 1 do
-        for dx = -1, 1 do
-            if not (dx == 0 and dy == 0) then
-                local nx = ((x - 1 + dx) % WIDTH)  + 1
-                local ny = ((y - 1 + dy) % HEIGHT) + 1
-                if grid[ny][nx] then n = n + 1 end
+local function step(g)
+    local n = newGrid()
+    for y = 1, H do for x = 1, W do
+        local c = 0
+        for dy = -1, 1 do for dx = -1, 1 do
+            if dx ~= 0 or dy ~= 0 then
+                if g[idx(x+dx, y+dy)] then c = c + 1 end
             end
-        end
-    end
+        end end
+        local alive = g[idx(x,y)]
+        n[idx(x,y)] = alive and (c==2 or c==3) or (not alive and c==3)
+    end end
     return n
 end
 
-local function step(grid)
-    local next = newGrid()
-    for y = 1, HEIGHT do
-        for x = 1, WIDTH do
-            local n = countNeighbours(grid, x, y)
-            if grid[y][x] then
-                next[y][x] = (n == 2 or n == 3)
-            else
-                next[y][x] = (n == 3)
-            end
-        end
+local function render(g, gen)
+    local b = {string.format("  Gen:%d  Speed:%d/8  [A]faster [Z]slower [Q]quit\n  +%s+\n", gen, sp, string.rep("-",W))}
+    for y = 1, H do
+        b[#b+1] = "  |"
+        for x = 1, W do b[#b+1] = g[idx(x,y)] and "#" or "." end
+        b[#b+1] = "|\n"
     end
-    return next
-end
-
-local function render(grid, gen)
-    local buf = {}
-    buf[#buf+1] = string.format(
-        "  Game of Life  |  Gen: %d  |  Speed: %d/8  |  [A] faster  [Z] slower  [Q] quit\n",
-        gen, sp)
-    buf[#buf+1] = "  +" .. string.rep("-", WIDTH) .. "+\n"
-    for y = 1, HEIGHT do
-        buf[#buf+1] = "  |"
-        for x = 1, WIDTH do
-            buf[#buf+1] = grid[y][x] and "#" or "."
-        end
-        buf[#buf+1] = "|\n"
-    end
-    buf[#buf+1] = "  +" .. string.rep("-", WIDTH) .. "+\n"
-    io.write(table.concat(buf))
-    io.flush()
+    b[#b+1] = "  +" .. string.rep("-",W) .. "+\n"
+    io.write("\027[H", table.concat(b)); io.flush()
 end
 
 local function readKey()
     local ch
     pcall(function()
         os.execute("stty -echo -icanon min 0 time 0 2>/dev/null")
-        local f = io.open("/dev/stdin", "r")
+        local f = io.open("/dev/stdin","r")
         if f then ch = f:read(1); f:close() end
         os.execute("stty echo icanon 2>/dev/null")
     end)
     return ch
 end
 
--- init
-local grid
+-- init grid
+local g = newGrid()
 if arg[1] then
-    grid = loadFile(arg[1])
+    local f = io.open(arg[1]) or (function() print("File not found"); os.exit(1) end)()
+    local rows, maxw = {}, 0
+    for line in f:lines() do
+        local row = {}
+        for ch in line:gmatch(".") do row[#row+1] = ch=="#" end
+        rows[#rows+1] = row
+        if #row > maxw then maxw = #row end
+    end
+    f:close()
+    if maxw > W then W = maxw end
+    if #rows > H then H = #rows end
+    g = newGrid()
+    local ox, oy = math.floor((W-maxw)/2), math.floor((H-#rows)/2)
+    for ry, row in ipairs(rows) do
+        for rx, v in ipairs(row) do
+            if v then g[idx(rx+ox, ry+oy)] = true end
+        end
+    end
 else
-    grid = newGrid()
-    glider(grid, 2, 2); glider(grid, 10, 5)
-    rpentomino(grid, 20, 8)
-    blinker(grid, 30, 3); blinker(grid, 35, 15)
-    randomSeed(grid, 0.15)
+    math.randomseed(os.time())
+    for i = 1, W*H do g[i] = math.random() < 0.25 end
 end
 
 io.write("\027[2J")
 local gen = 0
 pcall(function()
     while true do
-        clear()
-        render(grid, gen)
+        render(g, gen)
         local k = readKey()
         if k then
             k = k:lower()
-            if k == "q" then
-                os.execute("stty echo icanon")
-                io.write("\nBye!\n"); os.exit(0)
-            elseif k == "a" and sp < #SPEEDS then sp = sp + 1
-            elseif k == "z" and sp > 1       then sp = sp - 1
-            end
+            if k=="q" then os.execute("stty echo icanon"); io.write("\nBye!\n"); os.exit(0)
+            elseif k=="a" and sp < #SPEEDS then sp = sp+1
+            elseif k=="z" and sp > 1 then sp = sp-1 end
         end
-        grid = step(grid)
-        gen  = gen + 1
-        sleep(SPEEDS[sp])
+        g = step(g); gen = gen+1
+        local t = os.clock() + SPEEDS[sp]
+        while os.clock() < t do end
     end
 end)
 os.execute("stty echo icanon")
